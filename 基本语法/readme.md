@@ -2,7 +2,9 @@
 * [1.static关键字](#static关键字)
 * [2.c++和c的区别](#区别)
 * [3.c++中四种cast转换](#四种cast转换)
-
+* [4.指针和引用的区别](#指针和引用的区别)
+* [5.四个智能指针](#四个智能指针)
+* [6.指针和数组的区别](#指针和数组的区别)
 <!-- GFM-TOC -->
 
 #  static关键字
@@ -73,3 +75,138 @@ C++中四种类型转换是:static_cast, dynamic_cast, const_cast, reinterpret_c
      
 **5、为什么不使用C的强制转换?**
      C 的强制转换表面上看起来功能强大什么都能转，但是转化不够明确，不能进行错误检查， 容易出错。
+     
+# 指针和引用的区别
+1.指针有自己的一块空间，而引用只是一个别名;
+
+2.使用 sizeof 看一个指针的大小是 4，而引用则是被引用对象的大小;
+
+3.指针可以被初始化为 NULL，而引用必须被初始化且必须是一个已有对象 的引用;
+
+4.作为参数传递时，指针需要被解引用才可以对对象进行操作，而直接对引 用的修改都会 改变引用所指向的对象;
+
+5.可以有 const 指针，但是没有 const 引用;
+
+6.指针在使用中可以指向其它对象，但是引用只能是一个对象的引用，不能被改变; 
+
+7.如果返回动态内存分配的对象或者内存，必须使用指针，引用可能引起内存泄露。
+ 
+7.指针可以有多级指针(* * p)，而引用至于一级;
+
+8.指针和引用使用++运算符的意义不一样;
+
+# 四个智能指针
+C++里面的四个智能指针: auto_ptr, shared_ptr, weak_ptr, unique_ptr 其中后三个是 c++11 支持，并且第一个已经被 11 弃用。
+
+## 为什么要使用智能指针
+
+智能指针的作用是管理一个指针，因为存在以下这种情况:申请的空间在函数结束时忘记释放，造成**内存泄漏**。使用智能指针可以很大程度上的避免这个问题，因为智能指针就是一个类， 当超出了类的作用域是，类会自动调用析构函数，析构函数会自动释放资源。**所以智能指针的作用原理就是在函数结束时自动释放内存空间，不需要手动释放内存空间**。
+
+## 1. auto_ptr(c++98 的方案，cpp11 已经抛弃)
+采用所有权模式。
+```
+auto_ptr< string> p1 (new string ("I reigned lonely as a cloud.”));
+auto_ptr<string> p2;
+p2 = p1; //auto_ptr 不会报错.
+```
+
+此时不会报错，p2 剥夺了 p1 的所有权，但是当程序运行时访问 p1 将会报错。所以 auto_ptr 的缺点是:**存在潜在的内存崩溃问题!**
+## 2. unique_ptr(替换 auto_ptr)
+unique_ptr 实现独占式拥有或严格拥有概念，保证同一时间内只有一个智能指针可以指向该对象。它对于避免资源泄露(例如“以 new 创建对象后因为发生异常而忘记调用 delete”)特别有用。
+
+采用所有权模式，
+```
+unique_ptr<string> p3 (new string ("auto")); //#4
+unique_ptr<string> p4; //#5 
+p4 = p3;//此时会报错!!
+```
+编译器认为 p4=p3 非法，避免了 p3 不再指向有效数据的问题。因此，unique_ptr 比 auto_ptr 更安全。
+
+另外 unique_ptr 还有更聪明的地方:当程序试图将一个 unique_ptr 赋值给另一个时，如 果源 unique_ptr 是个**临时右值**，编译器允许这么做;如果源 unique_ptr 将存在一段时间，编 译器将禁止这么做，比如:
+```
+unique_ptr<string> pu1(new string ("hello world")); unique_ptr<string> pu2;
+pu2 = pu1; // #1 not allowed unique_ptr<string> pu3;
+pu3 = unique_ptr<string>(new string ("You")); // #2 allowed
+``` 
+其中#1留下悬挂的unique_ptr(pu1)，这可能导致危害。而#2不会留下悬挂的unique_ptr， 因为它调用 unique_ptr 的构造函数，该构造函数创建的临时对象在其所有权让给 pu3 后就会被销毁。这种随情况而已的行为表明，unique_ptr 优于允许两种赋值的 auto_ptr 。
+
+注:如果确实想执行类似与#1 的操作，要安全的重用这种指针，可给它赋新值。C++有一个 标准库函数 std::move()，让你能够将一个 unique_ptr 赋给另一个。例如:
+```
+unique_ptr<string> ps1, ps2; ps1 = demo("hello");
+ps2 = move(ps1);
+ps1 = demo("alexia");
+    cout << *ps2 << *ps1 << endl;
+```
+## 3. shared_ptr
+shared_ptr 实现共享式拥有概念。
+多个智能指针可以指向相同对象，该对象和其相关资源 会在“最后一个引用被销毁”时候释放。从名字 share 就可以看出了资源可以被多个指针共享， 它使用**计数机制**来表明资源被几个指针共享。可以通过成员函数 use_count()来查看资源的所有者个数。除了可以通过 new 来构造，还可以通过传入 auto_ptr, unique_ptr,weak_ptr 来构造。
+
+当我们调用 release()时，当前指针会释放资源所有权，计数减一。当计数等于 0 时，资源会被释放。
+shared_ptr 是为了解决 auto_ptr 在对象所有权上的局限性(auto_ptr 是独占的), 在使用引用计数的机制上提供了可以共享所有权的智能指针。
+```
+成员函数:
+use_count 返回引用计数的个数
+unique 返回是否是独占所有权( use_count 为 1)
+swap 交换两个 shared_ptr 对象(即交换所拥有的对象)
+reset 放弃内部对象的所有权或拥有对象的变更, 会引起原有对象的引用计数的减少
+get 返回内部对象(指针), 由于已经重载了()方法, 因此和直接使用对象是一样的.如 shared_ptr<int> sp(new int(1)); 
+sp 与 sp.get()是等价的
+```
+## 4. weak_ptr
+weak_ptr 是一种不控制对象生命周期的智能指针, 它指向一个 shared_ptr 管理的对象. 进行该对象的内存管理的是那个强引用的 shared_ptr. weak_ptr 只是提供了对管理对象的一个访问手段。
+
+weak_ptr 设计的目的是为配合 shared_ptr 而引入的一种智能指针来协助 shared_ptr 工作, 它只可以从一个 shared_ptr 或另一个 weak_ptr 对象构造, 它的构造和析构不会引起引用记数的增加或减少。
+
+**weak_ptr 是用来解决 shared_ptr 相互引用时的死锁问题**, 如果说两个 shared_ptr 相互引用,那么这两个指针的引用计数永远不可能下降为 0,资源永远不会释放。它是对对象的一种弱引用，不会增加对象的引用计数，和 shared_ptr 之间可以相互转 化，shared_ptr 可以直接赋值给它，它可以通过调用 lock 函数来获得 shared_ptr。
+```
+class B;
+class A
+{
+    public:
+    shared_ptr<B> pb_; 
+    ~A()
+   {
+      cout<<"A delete\n"; 
+    }
+};
+class B
+{
+    public:
+    shared_ptr<A> pa_; 
+    ~B()
+    {
+       cout<<"B delete\n"; }
+    };
+    void fun()
+    {
+     shared_ptr<B> pb(new B()); 
+     shared_ptr<A> pa(new A());
+     pb->pa_ = pa;
+     pa->pb_ = pb; 
+     cout<<pb.use_count()<<endl; 
+     cout<<pa.use_count()<<endl;
+}
+int main() 
+{
+  fun();
+  return 0;
+}
+```
+可以看到 fun 函数中 pa ，pb 之间互相引用，两个资源的引用计数为 2，当要跳出函数时， 智能指针 pa，pb 析构时两个资源引用计数会减一，但是两者引用计数还是为 1，导致跳出函数 时资源没有被释放(A B 的析构函数没有被调用)，如果把其中一个改为 weak_ptr 就可以了， 我们把类 A 里面的 shared_ptr pb_; 改为 weak_ptr pb_; 运行结果如下，这样的话，资源 B 的 引用开始就只有 1，当 pb 析构时，B 的计数变为 0，B 得到释放，B 释放的同时也会使 A 的计数 减一，同时 pa 析构时使 A 的计数减一，那么 A 的计数为 0，A 得到释放。
+**注意**的是我们不能通过weak_ptr直接访问对象的方法，比如B对象中有一个方法print(), 我们不能这样访问，pa->pb_->print(); 英文 pb_是一个 weak_ptr，**应该先把它转化为 shared_ptr**,如:
+```
+shared_ptr p = pa->pb_.lock(); p->print();
+```
+**注意**的是我们不能通过weak_ptr直接访问对象的方法，比如B对象中有一个方法print(), 我们不能这样访问，pa->pb_->print(); 英文 pb_是一个 weak_ptr，**应该先把它转化为 shared_ptr**,如:shared_ptr p = pa->pb_.lock(); p->print();
+
+**注意**的是我们不能通过weak_ptr直接访问对象的方法，比如B对象中有一个方法print(), 我们不能这样访问，pa->pb_->print(); 英文 pb_是一个 weak_ptr，**应该先把它转化为 shared_ptr**,如:shared_ptr p = pa->pb_.lock(); p->print();
+
+# 指针和数组的区别
+｜                                指针                        ｜               数组              ｜
+-------------------------------------------------------------|---------------------------------
+｜                              保存数据的地址                 ｜               保存数据          ｜ 
+｜间接访问数据，首先获得指针的内容，然后将其作为地址，从该地址中提取数据 ｜           直接访问数据          ｜
+｜                            通常用于动态的数据结构             ｜通常用于固定数目且数据类型相同的元素 ｜
+｜               通过Malloc分配内存，free释放内存                |         隐式的分配和删除          |
+｜               通常指向匿名数据，操作匿名函数                   ｜          自身即为数据名          ｜
+ 
